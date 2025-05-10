@@ -1,4 +1,4 @@
-# docker_files/Dockerfile (Refined)
+# Dockerfile (Refined)
 
 # Stage 1: Builder - To install dependencies and build artifacts
 FROM python:3.9-slim-buster AS builder
