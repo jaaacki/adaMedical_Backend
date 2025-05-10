@@ -1,0 +1,15 @@
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-RESTx
+Flask-JWT-Extended
+Flask-CORS
+Marshmallow
+Flask-Marshmallow
+bcrypt
+google-cloud-secret-manager
+mysqlclient
+gunicorn
+python-dotenv
+alembic
+Authlib

@@ -1,0 +1,55 @@
+# .dockerignore
+
+# Git files
+.git
+.gitignore
+
+# Python virtual environment (if used locally, not needed in image)
+.venv
+venv/
+ENV/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and editor specific files
+.vscode/
+.idea/
+*.project
+*.classpath
+*.DS_Store
+
+# Local instance/database specific (if any)
+instance/
+*.sqlite3
+*.db
+
+# Test reports and coverage data
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Build artifacts (if any Python build steps produce these locally)
+build/
+dist/
+*.egg-info/
+
+# OS-specific files (examples)
+Thumbs.db
+
+# Secrets and local environment files (should be passed via Docker env vars, not copied)
+.env
+*.env # General catch-all for any other .env files
+.env.*
+
+# Docker files themselves (if they are in the root, otherwise adjust path)
+# If Dockerfile is in a subdirectory, it might be fine.
+# Dockerfile
+# docker-compose.yml
+
+# Sensitive or large files not needed in the application image
+# large_data_file.csv
+# *.log # If logs are generated locally and not meant to be in image
