@@ -27,7 +27,7 @@ ENV PYTHONUNBUFFERED 1
 ENV APP_HOME /app
 ENV FLASK_ENV production
 ENV FLASK_APP "app:create_app()"
-ENV PATH=$APP_HOME/.local/bin:$PATH # Add local bin to PATH for Gunicorn if installed per user
+ENV PATH=$APP_HOME/.local/bin:$PATH
 
 WORKDIR $APP_HOME
 
@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed Python packages from the builder stage
 # Ensure these paths are correct based on how pip installs them in the builder stage
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-COPY --from=builder /usr/local/bin/ /usr/local/bin/ # For global binaries like gunicorn, flask
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Copy application code from the builder stage
 COPY --from=builder $APP_HOME $APP_HOME
@@ -54,8 +54,5 @@ RUN chown -R appuser:appgroup $APP_HOME
 USER appuser
 
 EXPOSE 8000
-
-# HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-#   CMD curl -f http://localhost:8000/health || exit 1
 
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--log-level", "info", "app:create_app()"]

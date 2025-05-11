@@ -1,0 +1,46 @@
+# docker-compose.yml (Moved into docker folder)
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .. # Build context is the project root (one level up)
+      dockerfile: docker/Dockerfile   # Path to Dockerfile relative to the project root
+    container_name: business-api-app
+    ports:
+      - "5000:8000" # Host:Container
+    env_file:
+      - ../.env # Load environment variables from .env file in the project root
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      # Mounts the project's adaMedical_App directory to /app in container
+      # The first part of the path (../adaMedical_App) is relative to this docker-compose.yml file
+      - ../adaMedical_App:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --reload "app:create_app()"
+
+  db:
+    image: mysql:8.0
+    container_name: business-api-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+    ports:
+      - "3307:3306"
+    volumes:
+      # The volume name 'mysql_data' is global to docker, no path adjustment needed here
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u$${MYSQL_USER}", "-p$${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:
