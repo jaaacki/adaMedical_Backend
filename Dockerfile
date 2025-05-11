@@ -27,7 +27,7 @@ FROM python:3.9-slim-buster AS runtime
 ENV PYTHONUNBUFFERED 1
 ENV APP_HOME /app
 ENV FLASK_ENV production
-ENV FLASK_APP "app:create_app()"
+ENV FLASK_APP "main:create_app()" # <-- Updated here
 ENV PATH=$APP_HOME/.local/bin:$PATH
 
 WORKDIR $APP_HOME
@@ -61,4 +61,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--log-level", "info", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--log-level", "info", "main:create_app()"] # <-- Updated here
