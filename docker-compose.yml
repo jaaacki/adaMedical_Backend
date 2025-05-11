@@ -4,8 +4,8 @@ version: '3.8'
 services:
   app:
     build:
-      context: .. # Build context is the project root (one level up)
-      dockerfile: docker/Dockerfile   # Path to Dockerfile relative to the project root
+      context: . # Build context is the project root (one level up)
+      dockerfile: Dockerfile   # Path to Dockerfile relative to the project root
     container_name: business-api-app
     ports:
       - "5000:8000" # Host:Container
