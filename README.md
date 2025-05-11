@@ -227,3 +227,5 @@ Once the application is running (either locally or via Docker), OpenAPI/Swagger 
 
 ---
 This README should provide a comprehensive guide for developers.
+
+Force Git
