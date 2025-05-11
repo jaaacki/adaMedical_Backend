@@ -27,7 +27,7 @@ FROM python:3.9-slim-buster AS runtime
 ENV PYTHONUNBUFFERED 1
 ENV APP_HOME /app
 ENV FLASK_ENV production
-ENV FLASK_APP "main:create_app()" # <-- Updated here
+ENV FLASK_APP "main:create_app()"
 ENV PATH=$APP_HOME/.local/bin:$PATH
 
 WORKDIR $APP_HOME
@@ -35,9 +35,10 @@ WORKDIR $APP_HOME
 # Create a non-root user and group
 RUN groupadd -r appgroup && useradd --no-log-init -r -g appgroup -d $APP_HOME appuser
 
-# Install only necessary OS-level runtime dependencies
+# Install only necessary OS-level runtime dependencies, including libmariadb3
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-mysql-client \
+    libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from the builder stage
@@ -56,9 +57,16 @@ RUN chown -R appuser:appgroup $APP_HOME
 RUN find $APP_HOME -type d -exec chmod u=rwx,go=rx {} + && \
     find $APP_HOME -type f -exec chmod u=rw,go=r {} +
 
+# Verify mysqlclient installation and shared library linking (added ldd check)
+RUN echo "Verifying mysqlclient installation and libs:" && \
+    pip show mysqlclient && \
+    echo "pip freeze output:" && pip freeze && \
+    echo "Checking shared libraries for mysqlclient _mysql.so:" && \
+    ldd /usr/local/lib/python3.9/site-packages/MySQLdb/_mysql.cpython-39-x86_64-linux-gnu.so || echo "ldd command failed or file not found"
+
 # Switch to the non-root user
 USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--log-level", "info", "main:create_app()"] # <-- Updated here
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--log-level", "info", "main:create_app()"]

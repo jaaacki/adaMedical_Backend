@@ -4,8 +4,8 @@ version: '3.8'
 services:
   app:
     build:
-      context: . 
-      dockerfile: Dockerfile 
+      context: .
+      dockerfile: Dockerfile
     container_name: business-api-app
     ports:
       - "5555:8000" # Host:Container
@@ -19,29 +19,4 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --reload "app:create_app()"
-
-  db:
-    image: mysql:8.0
-    container_name: business-api-db
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
-      MYSQL_USER: ${MYSQL_USER:-user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
-    volumes:
-      - db_data:/var/lib/mysql # This is the Docker named volume for MySQL data
-      # init.sql is now in db_setup folder
-      - ./db_setup/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "3307:3306" # Host:Container (using 3307 on host to avoid conflict if local MySQL runs on 3306)
-    healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "${MYSQL_USER:-user}", "-p${MYSQL_PASSWORD:-password}"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s # Gives MySQL more time to initialize, especially on first run
-
-volumes:
-  db_data: # This defines the Docker named volume for MySQL data storage
-    driver: local
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --reload "main:create_app()"
