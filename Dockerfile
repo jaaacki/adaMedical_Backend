@@ -12,6 +12,7 @@ WORKDIR $APP_HOME
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     default-libmysqlclient-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -36,7 +37,7 @@ RUN groupadd -r appgroup && useradd --no-log-init -r -g appgroup -d $APP_HOME ap
 
 # Install only necessary OS-level runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    default-libmysqlclient-dev \
+    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from the builder stage

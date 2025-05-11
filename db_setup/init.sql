@@ -1,0 +1,2 @@
+-- This file is intentionally left empty.
+-- Database schema will be managed by Flask-Migrate.

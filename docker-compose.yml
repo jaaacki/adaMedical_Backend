@@ -1,22 +1,21 @@
-# docker-compose.yml (Moved into docker folder)
+# docker-compose.yml (Now at project root)
 version: '3.8'
 
 services:
   app:
     build:
-      context: . # Build context is the project root (one level up)
-      dockerfile: Dockerfile   # Path to Dockerfile relative to the project root
+      context: . 
+      dockerfile: Dockerfile 
     container_name: business-api-app
     ports:
-      - "5000:8000" # Host:Container
+      - "5555:8000" # Host:Container
     env_file:
-      - ../.env # Load environment variables from .env file in the project root
+      - .env # Load environment variables from .env file in the project root
     environment:
       - FLASK_ENV=development
     volumes:
-      # Mounts the project's adaMedical_App directory to /app in container
-      # The first part of the path (../adaMedical_App) is relative to this docker-compose.yml file
-      - ../adaMedical_App:/app
+      # Mounts the project root to /app in container
+      - .:/app
     depends_on:
       db:
         condition: service_healthy
@@ -30,17 +29,19 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
       MYSQL_USER: ${MYSQL_USER:-user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
-    ports:
-      - "3307:3306"
     volumes:
-      # The volume name 'mysql_data' is global to docker, no path adjustment needed here
-      - mysql_data:/var/lib/mysql
+      - db_data:/var/lib/mysql # This is the Docker named volume for MySQL data
+      # init.sql is now in db_setup folder
+      - ./db_setup/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3307:3306" # Host:Container (using 3307 on host to avoid conflict if local MySQL runs on 3306)
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u$${MYSQL_USER}", "-p$${MYSQL_PASSWORD}"]
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "${MYSQL_USER:-user}", "-p${MYSQL_PASSWORD:-password}"]
       interval: 10s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 30s # Gives MySQL more time to initialize, especially on first run
 
 volumes:
-  mysql_data:
+  db_data: # This defines the Docker named volume for MySQL data storage
+    driver: local
