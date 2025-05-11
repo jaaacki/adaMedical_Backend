@@ -73,10 +73,8 @@ config_by_name = {
 }
 
 # Helper function to get the config object based on FLASK_ENV or a passed name
-# This function is not strictly needed if create_app directly accesses config_by_name
-# but can be useful if config is needed outside the app factory.
-# def get_current_config(config_name_override=None):
-#     if config_name_override:
-#         return config_by_name.get(config_name_override, DevelopmentConfig)
-#     flask_env = os.getenv('FLASK_ENV', 'development')
-#     return config_by_name.get(flask_env, DevelopmentConfig)
+def get_config(config_name_override=None):
+    if config_name_override:
+        return config_by_name.get(config_name_override, DevelopmentConfig)
+    flask_env = os.getenv('FLASK_ENV', 'development')
+    return config_by_name.get(flask_env, DevelopmentConfig)

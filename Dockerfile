@@ -41,15 +41,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from the builder stage
-# Ensure these paths are correct based on how pip installs them in the builder stage
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code from the builder stage
 COPY --from=builder $APP_HOME $APP_HOME
 
 # Change ownership of the app directory to the appuser
 RUN chown -R appuser:appgroup $APP_HOME
+
+# Grant necessary permissions explicitly:
+# For directories: owner (appuser) gets rwx, group & others get rx (755 equivalent for owner)
+# For files: owner (appuser) gets rw, group & others get r (644 equivalent for owner)
+RUN find $APP_HOME -type d -exec chmod u=rwx,go=rx {} + && \
+    find $APP_HOME -type f -exec chmod u=rw,go=r {} +
 
 # Switch to the non-root user
 USER appuser
