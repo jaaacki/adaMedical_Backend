@@ -533,6 +533,10 @@ class RoleResource(Resource):
 @ns.route('/<int:user_id>/currencies')
 class UserCurrencyHandler(Resource):
     @ns.doc('manage_user_currencies')
+    @ns.expect(ns.model('BatchUpdateCurrencies', {
+        'currencies': fields.List(fields.String, required=True, description='List of currency codes to assign'),
+        'default_currency': fields.String(required=True, description='Default currency code')
+    }))
     @ns.response(200, 'Success')
     @ns.response(400, 'Bad Request')
     @ns.response(401, 'Unauthorized')
@@ -561,7 +565,7 @@ class UserCurrencyHandler(Resource):
             return {'status': 'error', 'message': 'Default currency must be in the currencies list'}, 400
         
         # Verify all currencies exist
-        from app.currencies.models import Currency
+        from app.currencies.routes import Currency
         for code in currencies:
             currency = Currency.query.get(code)
             if not currency:
@@ -569,7 +573,7 @@ class UserCurrencyHandler(Resource):
         
         try:
             # Start by getting existing user currencies
-            from app.currencies.models import UserCurrency
+            from app.currencies.routes import UserCurrency
             existing_currencies = UserCurrency.query.filter_by(user_id=user_id).all()
             existing_codes = [c.currency_code for c in existing_currencies]
             

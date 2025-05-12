@@ -107,6 +107,13 @@ def create_app(config_name=None):
 
         from app.auth.routes import ns as auth_ns
         api.add_namespace(auth_ns, path='/auth')
+
+        # Import the currencies namespace
+        from app.currencies.routes import ns as currencies_ns, initialize_currencies
+        api.add_namespace(currencies_ns, path='/currencies')
+
+        # Initialize currencies
+        initialize_currencies()
         
         # Create default admin user if no users exist
         create_default_admin(app)
