@@ -485,3 +485,187 @@ class AdminUserCurrencyList(Resource):
             db.session.rollback()
             current_app.logger.error(f"Error assigning currency to user: {str(e)}")
             return {'status': 'error', 'message': 'Could not assign currency'}, 500
+
+# Admin endpoints for managing user currencies
+@ns.route('/admin/users/<int:user_id>/currencies')
+class AdminUserCurrencyList(Resource):
+    @ns.marshal_list_with(user_currency_detail_model)
+    @ns.response(200, 'Success')
+    @ns.response(403, 'Admin access required')
+    @ns.response(404, 'User not found')
+    @jwt_required()
+    @admin_required
+    def get(self, user_id):
+        """Get currencies assigned to a specific user (Admin only)."""
+        # Verify user exists
+        user = User.query.get_or_404(user_id)
+        
+        # Get user currencies with joined currency data
+        from sqlalchemy.orm import joinedload
+        user_currencies = UserCurrency.query.filter_by(user_id=user_id).options(
+            joinedload(UserCurrency.currency)
+        ).all()
+        
+        return user_currencies
+    
+    @ns.expect(ns.model('AdminAssignCurrency', {
+        'currency_code': fields.String(required=True, description='Currency code to assign'),
+        'is_default': fields.Boolean(default=False)
+    }))
+    @ns.marshal_with(user_currency_model, code=201)
+    @ns.response(201, 'Currency assigned to user')
+    @ns.response(400, 'Validation error')
+    @ns.response(403, 'Admin access required')
+    @ns.response(404, 'User or currency not found')
+    @ns.response(409, 'Currency already assigned to user')
+    @jwt_required()
+    @admin_required
+    def post(self, user_id):
+        """Assign a currency to a user (Admin only)."""
+        # Verify user exists
+        user = User.query.get_or_404(user_id)
+        
+        data = request.json
+        currency_code = data.get('currency_code')
+        
+        if not currency_code:
+            return {'status': 'error', 'message': 'currency_code is required'}, 400
+        
+        # Check if currency exists
+        currency = Currency.query.get(currency_code)
+        if not currency:
+            return {'status': 'error', 'message': f'Currency {currency_code} not found'}, 404
+        
+        # Check if already assigned
+        existing = UserCurrency.query.filter_by(
+            user_id=user_id,
+            currency_code=currency_code
+        ).first()
+        
+        if existing:
+            return {
+                'status': 'error',
+                'message': f'Currency {currency_code} is already assigned to user {user_id}'
+            }, 409
+        
+        # Create the assignment
+        new_assignment = UserCurrency(
+            user_id=user_id,
+            currency_code=currency_code,
+            is_default=data.get('is_default', False)
+        )
+        
+        # If setting as default, unset any existing default
+        if new_assignment.is_default:
+            UserCurrency.query.filter_by(
+                user_id=user_id,
+                is_default=True
+            ).update({'is_default': False})
+        
+        try:
+            db.session.add(new_assignment)
+            db.session.commit()
+            return new_assignment, 201
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error assigning currency to user: {str(e)}")
+            return {'status': 'error', 'message': 'Could not assign currency'}, 500
+
+@ns.route('/admin/users/<int:user_id>/currencies/<string:currency_code>')
+class AdminUserCurrencyDetail(Resource):
+    @ns.marshal_with(user_currency_detail_model)
+    @ns.response(200, 'Success')
+    @ns.response(403, 'Admin access required')
+    @ns.response(404, 'User currency assignment not found')
+    @jwt_required()
+    @admin_required
+    def get(self, user_id, currency_code):
+        """Get details of a specific currency assignment for a user (Admin only)."""
+        from sqlalchemy.orm import joinedload
+        user_currency = UserCurrency.query.filter_by(
+            user_id=user_id,
+            currency_code=currency_code
+        ).options(
+            joinedload(UserCurrency.currency)
+        ).first_or_404()
+        
+        return user_currency
+    
+    @ns.expect(ns.model('UpdateUserCurrency', {
+        'is_default': fields.Boolean(description='Set as default currency')
+    }))
+    @ns.marshal_with(user_currency_detail_model)
+    @ns.response(200, 'User currency updated')
+    @ns.response(403, 'Admin access required')
+    @ns.response(404, 'User currency assignment not found')
+    @jwt_required()
+    @admin_required
+    def put(self, user_id, currency_code):
+        """Update currency assignment settings for a user (Admin only)."""
+        data = request.json
+        
+        # Get the assignment
+        from sqlalchemy.orm import joinedload
+        user_currency = UserCurrency.query.filter_by(
+            user_id=user_id,
+            currency_code=currency_code
+        ).options(
+            joinedload(UserCurrency.currency)
+        ).first_or_404()
+        
+        # Update default setting if requested
+        if 'is_default' in data and data['is_default'] and not user_currency.is_default:
+            # Unset current default
+            UserCurrency.query.filter_by(
+                user_id=user_id,
+                is_default=True
+            ).update({'is_default': False})
+            
+            # Set this as default
+            user_currency.is_default = True
+        
+        try:
+            db.session.commit()
+            return user_currency, 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating user currency: {str(e)}")
+            return {'status': 'error', 'message': 'Could not update currency settings'}, 500
+    
+    @ns.response(200, 'Currency assignment removed')
+    @ns.response(400, 'Cannot remove default currency')
+    @ns.response(403, 'Admin access required')
+    @ns.response(404, 'User currency assignment not found')
+    @jwt_required()
+    @admin_required
+    def delete(self, user_id, currency_code):
+        """Remove a currency assignment from a user (Admin only)."""
+        # Get the assignment
+        user_currency = UserCurrency.query.filter_by(
+            user_id=user_id,
+            currency_code=currency_code
+        ).first_or_404()
+        
+        # Don't allow removing the default currency
+        if user_currency.is_default:
+            return {
+                'status': 'error',
+                'message': 'Cannot remove a user\'s default currency. Set another currency as default first.'
+            }, 400
+        
+        # Don't allow removing if it's the user's only currency
+        count = UserCurrency.query.filter_by(user_id=user_id).count()
+        if count <= 1:
+            return {
+                'status': 'error',
+                'message': 'Cannot remove a user\'s only currency assignment.'
+            }, 400
+        
+        try:
+            db.session.delete(user_currency)
+            db.session.commit()
+            return {'status': 'success', 'message': f'Currency {currency_code} removed from user {user_id}'}, 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error removing user currency: {str(e)}")
+            return {'status': 'error', 'message': 'Could not remove currency assignment'}, 500

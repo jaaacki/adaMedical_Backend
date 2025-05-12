@@ -50,15 +50,34 @@ class UserService:
         try:
             db.session.add(user)
             db.session.commit()
+            
+            # After user is created, assign the default currency
+            from app.currencies.models import UserCurrency, Currency
+            if user.currency_context:
+                # Check if currency exists
+                currency = Currency.query.get(user.currency_context)
+                if currency:
+                    # Assign the currency to the user as default
+                    user_currency = UserCurrency(
+                        user_id=user.id,
+                        currency_code=user.currency_context,
+                        is_default=True
+                    )
+                    db.session.add(user_currency)
+                    db.session.commit()
+            
             return user
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating user: {e}")
             raise
-    
+
     def update_user(self, user_id, data):
         """Update a user."""
         user = self.get_user_by_id(user_id)
+        
+        # Keep track of the old currency_context for updating currency assignments
+        old_currency_context = user.currency_context
         
         if 'name' in data:
             user.name = data['name']
@@ -72,7 +91,8 @@ class UserService:
         if 'is_active' in data:
             user.is_active = data['is_active']
         
-        if 'currency_context' in data:
+        if 'currency_context' in data and data['currency_context'] != old_currency_context:
+            # Store the new currency_context
             user.currency_context = data['currency_context']
         
         if 'role_id' in data:
@@ -89,6 +109,52 @@ class UserService:
         
         try:
             db.session.commit()
+            
+            # Update the currency assignments if currency_context has changed
+            if 'currency_context' in data and data['currency_context'] != old_currency_context:
+                from app.currencies.models import UserCurrency, Currency
+                
+                # Get the new currency context
+                new_currency = data['currency_context']
+                
+                # Make sure the currency exists
+                currency = Currency.query.get(new_currency)
+                if currency:
+                    # Check if the user already has this currency assigned
+                    existing_assignment = UserCurrency.query.filter_by(
+                        user_id=user.id,
+                        currency_code=new_currency
+                    ).first()
+                    
+                    if existing_assignment:
+                        # Already assigned, just make it the default
+                        if not existing_assignment.is_default:
+                            # Unset current default
+                            UserCurrency.query.filter_by(
+                                user_id=user.id,
+                                is_default=True
+                            ).update({'is_default': False})
+                            
+                            # Set this one as default
+                            existing_assignment.is_default = True
+                            db.session.commit()
+                    else:
+                        # Not assigned yet, create new assignment
+                        # First unset any existing default
+                        UserCurrency.query.filter_by(
+                            user_id=user.id,
+                            is_default=True
+                        ).update({'is_default': False})
+                        
+                        # Create the new default assignment
+                        user_currency = UserCurrency(
+                            user_id=user.id,
+                            currency_code=new_currency,
+                            is_default=True
+                        )
+                        db.session.add(user_currency)
+                        db.session.commit()
+            
             return user
         except Exception as e:
             db.session.rollback()

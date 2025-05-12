@@ -527,3 +527,114 @@ class RoleResource(Resource):
             ns.abort(500, status='error', message='Could not delete role due to a server error')
             
         return {'status': 'success', 'message': 'Role deleted successfully'}, 200
+    
+# app/users/routes.py - Add this handler to the users namespace
+
+@ns.route('/<int:user_id>/currencies')
+class UserCurrencyHandler(Resource):
+    @ns.doc('manage_user_currencies')
+    @ns.response(200, 'Success')
+    @ns.response(400, 'Bad Request')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden')
+    @ns.response(404, 'User Not Found')
+    @jwt_required()
+    @admin_required
+    def post(self, user_id):
+        """Update a user's currency assignments (batch operation)."""
+        data = request.json
+        
+        # Verify user exists
+        user = User.query.get_or_404(user_id)
+        
+        # Get the currencies to assign
+        currencies = data.get('currencies', [])
+        default_currency = data.get('default_currency')
+        
+        if not currencies:
+            return {'status': 'error', 'message': 'No currencies provided'}, 400
+        
+        if not default_currency:
+            return {'status': 'error', 'message': 'Default currency must be provided'}, 400
+        
+        if default_currency not in currencies:
+            return {'status': 'error', 'message': 'Default currency must be in the currencies list'}, 400
+        
+        # Verify all currencies exist
+        from app.currencies.models import Currency
+        for code in currencies:
+            currency = Currency.query.get(code)
+            if not currency:
+                return {'status': 'error', 'message': f'Currency {code} not found'}, 404
+        
+        try:
+            # Start by getting existing user currencies
+            from app.currencies.models import UserCurrency
+            existing_currencies = UserCurrency.query.filter_by(user_id=user_id).all()
+            existing_codes = [c.currency_code for c in existing_currencies]
+            
+            # Determine currencies to add and remove
+            to_add = [c for c in currencies if c not in existing_codes]
+            to_remove = [c for c in existing_codes if c not in currencies]
+            
+            # Remove currencies no longer in the list
+            for code in to_remove:
+                assignment = UserCurrency.query.filter_by(
+                    user_id=user_id,
+                    currency_code=code
+                ).first()
+                
+                if assignment:
+                    db.session.delete(assignment)
+            
+            # Add new currencies
+            for code in to_add:
+                is_default = (code == default_currency)
+                assignment = UserCurrency(
+                    user_id=user_id,
+                    currency_code=code,
+                    is_default=is_default
+                )
+                db.session.add(assignment)
+            
+            # Update default currency
+            # First, unset all defaults
+            UserCurrency.query.filter_by(
+                user_id=user_id,
+                is_default=True
+            ).update({'is_default': False})
+            
+            # Set the new default
+            default_assignment = UserCurrency.query.filter_by(
+                user_id=user_id,
+                currency_code=default_currency
+            ).first()
+            
+            if default_assignment:
+                default_assignment.is_default = True
+            else:
+                # Create the default assignment if it doesn't exist
+                default_assignment = UserCurrency(
+                    user_id=user_id,
+                    currency_code=default_currency,
+                    is_default=True
+                )
+                db.session.add(default_assignment)
+            
+            # Also update user.currency_context for backward compatibility
+            user.currency_context = default_currency
+            
+            # Commit all changes
+            db.session.commit()
+            
+            return {
+                'status': 'success',
+                'message': 'User currencies updated',
+                'currencies': currencies,
+                'default_currency': default_currency
+            }, 200
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating user currencies: {e}")
+            return {'status': 'error', 'message': 'Failed to update user currencies'}, 500
