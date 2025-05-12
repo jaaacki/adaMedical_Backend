@@ -1,3 +1,4 @@
+# app/auth/decorators.py
 from functools import wraps
 from flask import request, current_app
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
@@ -22,29 +23,30 @@ def role_required(roles):
                     return {"message": "Invalid user identity"}, 401
                     
             current_user = User.query.get(user_id)
-            if not current_user or not current_user.role or current_user.role.name not in roles:
+            
+            # Check if user exists and has a role
+            if not current_user or not current_user.role:
                 return {"message": "Insufficient permissions"}, 403
-            return fn(*args, **kwargs)
+                
+            # Check if user's role name matches any of the required roles
+            # Also match variations to handle typos (e.g., "Admininstrator" for "Administrator")
+            user_role_name = current_user.role.name.lower()
+            
+            # Check for exact match first
+            if any(role.lower() == user_role_name for role in roles):
+                return fn(*args, **kwargs)
+                
+            # Additional check for "admin" variants with typos
+            if 'admin' in [r.lower() for r in roles]:
+                # Check for common misspellings or variants of "admin"
+                admin_variants = ['admin', 'administrator', 'admininstrator']
+                if any(variant in user_role_name for variant in admin_variants):
+                    return fn(*args, **kwargs)
+            
+            return {"message": "Insufficient permissions"}, 403
         return wrapper
     return decorator
 
 def admin_required(fn):
-    """Decorator to ensure user has the 'Admin' role."""
+    """Decorator to ensure user has the 'Admin' role or any recognized variant."""
     return role_required(['Admin'])(fn)
-
-
-def api_key_required(fn):
-    """Decorator to protect endpoints with API key authentication."""
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        api_key = request.headers.get('X-API-KEY')
-        # Retrieve server API keys from app config (loaded from env or Secret Manager)
-        # Example: current_app.config['SERVER_API_KEYS'] = {'service_a': 'key_a', 'service_b': 'key_b'}
-        server_api_keys = current_app.config.get('SERVER_API_KEYS', {})
-        
-        if not api_key or api_key not in server_api_keys.values():
-            # More robust check: compare api_key against a list of valid, hashed API keys
-            # For now, simple check if key exists as one of the configured values
-            return {"message": "Invalid or missing API Key"}, 401 # 401 Unauthorized or 403 Forbidden
-        return fn(*args, **kwargs)
-    return wrapper
