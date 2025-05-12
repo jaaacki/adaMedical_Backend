@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 
 from config import get_config, config_by_name
 from app.extensions import db, migrate, jwt, cors, oauth
-from app.core.errors import register_error_handlers
+from app.core.error_handlers import register_error_handlers
 from app.core.logging import configure_logging
-from app.auth.services import register_oauth_client
+from app.auth.routes import register_oauth_client
 
 # Load environment variables from .env file
 load_dotenv()
@@ -39,7 +39,7 @@ def create_app(config_name=None):
     if app.config.get('ENV') == 'development':
         app.config['PROPAGATE_EXCEPTIONS'] = True
 
-    # Initialize extensions
+    # Initialize Flask extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
@@ -127,13 +127,11 @@ def create_default_admin(app):
     with app.app_context():
         try:
             from app.users.models import User, Role
-            from app.users.services import UserService
             
-            # Use service to check for users
-            user_service = UserService()
-            users = user_service.list_users()
+            # Check if we have any users
+            user_count = User.query.count()
             
-            if not users:
+            if user_count == 0:
                 # Get admin credentials from environment variables (.env file)
                 admin_email = os.environ.get('DEFAULT_ADMIN_EMAIL')
                 admin_password = os.environ.get('DEFAULT_ADMIN_PASSWORD')
@@ -168,7 +166,7 @@ def create_default_admin(app):
                 app.logger.info(f"Default admin user created with email: {admin_email}")
                 app.logger.warning("SECURITY NOTICE: Default admin user created with preset password. Please change it immediately after login.")
             else:
-                app.logger.info(f"Database already has {len(users)} users. Skipping default admin creation.")
+                app.logger.info(f"Database already has {user_count} users. Skipping default admin creation.")
                 
         except Exception as e:
             app.logger.error(f"Error creating default admin user: {e}")
