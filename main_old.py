@@ -5,9 +5,6 @@ from dotenv import load_dotenv
 
 from config import get_config, config_by_name
 from app.extensions import db, migrate, jwt, cors, oauth
-from app.core.errors import register_error_handlers
-from app.core.logging import configure_logging
-from app.auth.services import register_oauth_client
 
 # Load environment variables from .env file
 load_dotenv()
@@ -39,41 +36,32 @@ def create_app(config_name=None):
     if app.config.get('ENV') == 'development':
         app.config['PROPAGATE_EXCEPTIONS'] = True
 
-    # Initialize extensions
+    # Initialize Flask extensions with the app instance
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}}) # Adjust origins for production
     oauth.init_app(app) # Initialize Authlib's OAuth with the app
 
-    # Register error handlers
-    register_error_handlers(app)
-    
-    # Configure logging
-    configure_logging(app)
-    
     # Set up JWT error handlers
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
         return jsonify({
-            'status': 'error',
-            'message': 'The token has expired',
+            'msg': 'The token has expired',
             'error': 'token_expired'
         }), 401
 
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
         return jsonify({
-            'status': 'error',
-            'message': 'Signature verification failed',
+            'msg': 'Signature verification failed',
             'error': 'invalid_token'
         }), 401
 
     @jwt.unauthorized_loader
     def missing_token_callback(error):
         return jsonify({
-            'status': 'error',
-            'message': 'Request does not contain an access token',
+            'msg': 'Request does not contain an access token',
             'error': 'authorization_required'
         }), 401
 
@@ -90,18 +78,13 @@ def create_app(config_name=None):
     # Simple health check route
     @app.route('/health')
     def health_check():
-        return jsonify({
-            "status": "healthy", 
-            "message": "API is running",
-            "environment": app.config.get('ENV', 'development')
-        })
+        return jsonify({"status": "healthy", "message": "API is running"})
 
     # Register Blueprints/Namespaces within app_context
     with app.app_context():
-        # Register OAuth client
+        from app.auth.routes import register_oauth_client
         register_oauth_client(oauth, app.config)
 
-        # Register API namespaces
         from app.users.routes import ns as users_ns
         api.add_namespace(users_ns, path='/users')
 
@@ -113,7 +96,7 @@ def create_app(config_name=None):
 
     app.logger.info(f"Application created with configuration: {app.config.get('ENV', config_name)}")
     
-    # Check Google SSO configuration
+    # More accurate check for Google SSO configuration
     google_client_id = app.config.get('GOOGLE_CLIENT_ID')
     if google_client_id and len(str(google_client_id)) > 10:  # Simple check for a valid-looking ID
         app.logger.info("Google SSO Client ID is configured.")
@@ -127,13 +110,11 @@ def create_default_admin(app):
     with app.app_context():
         try:
             from app.users.models import User, Role
-            from app.users.services import UserService
             
-            # Use service to check for users
-            user_service = UserService()
-            users = user_service.list_users()
+            # Check if we have any users
+            user_count = User.query.count()
             
-            if not users:
+            if user_count == 0:
                 # Get admin credentials from environment variables (.env file)
                 admin_email = os.environ.get('DEFAULT_ADMIN_EMAIL')
                 admin_password = os.environ.get('DEFAULT_ADMIN_PASSWORD')
@@ -168,7 +149,7 @@ def create_default_admin(app):
                 app.logger.info(f"Default admin user created with email: {admin_email}")
                 app.logger.warning("SECURITY NOTICE: Default admin user created with preset password. Please change it immediately after login.")
             else:
-                app.logger.info(f"Database already has {len(users)} users. Skipping default admin creation.")
+                app.logger.info(f"Database already has {user_count} users. Skipping default admin creation.")
                 
         except Exception as e:
             app.logger.error(f"Error creating default admin user: {e}")

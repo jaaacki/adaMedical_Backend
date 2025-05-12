@@ -1,10 +1,9 @@
-# app/users/models.py (refactored)
 from app.extensions import db
 import bcrypt
 import datetime
-from app.core.models import BaseModel
+import os
 
-# Password utility functions
+# Create a standardized password hashing method using bcrypt
 def hash_password(password):
     """Hash password using bcrypt with consistent encoding."""
     if isinstance(password, str):
@@ -16,42 +15,43 @@ def verify_password(stored_hash, password):
     if not stored_hash:
         return False
     
+    # Ensure password is bytes
+    if isinstance(password, str):
+        password = password.encode('utf-8')
+    
+    # Ensure stored_hash is bytes 
+    if isinstance(stored_hash, str):
+        stored_hash = stored_hash.encode('utf-8')
+    
     try:
-        # Ensure password is bytes
-        if isinstance(password, str):
-            password = password.encode('utf-8')
-        
-        # Ensure stored_hash is bytes 
-        if isinstance(stored_hash, str):
-            stored_hash = stored_hash.encode('utf-8')
-        
         # Directly use bcrypt for verification
         return bcrypt.checkpw(password, stored_hash)
     except Exception as e:
-        # Use logger instead of print
-        import logging
-        logging.error(f"Password verification error: {str(e)}")
+        # If there's any error, log it and return False
+        print(f"Password verification error: {str(e)}")
         return False
 
-class Role(BaseModel):
-    """Role model."""
+class Role(db.Model):
     __tablename__ = 'roles'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True, nullable=False)
     users = db.relationship('User', backref='role', lazy='dynamic') # one-to-many
 
     def __repr__(self):
         return f'<Role {self.name}>'
 
-class User(BaseModel):
-    """User model."""
+class User(db.Model):
     __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
     email = db.Column(db.String(128), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255))
     google_sso_id = db.Column(db.String(255), unique=True, nullable=True)
-    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=True)
+    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=True) # Can be nullable if role assignment is optional or delayed
     is_active = db.Column(db.Boolean, default=True)
-    currency_context = db.Column(db.String(3), default='SGD')
+    currency_context = db.Column(db.String(3), default='SGD') # E.g., SGD, IDR
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     def set_password(self, password):
         """Set the password hash using bcrypt."""
@@ -60,16 +60,6 @@ class User(BaseModel):
     def check_password(self, password):
         """Check if the provided password matches the stored hash."""
         return verify_password(self.password_hash, password)
-    
-    @property
-    def has_password(self):
-        """Check if user has a password set."""
-        return bool(self.password_hash)
-    
-    @property
-    def is_sso_user(self):
-        """Check if user is linked to Google SSO."""
-        return bool(self.google_sso_id)
 
     def __repr__(self):
         return f'<User {self.email}>'
