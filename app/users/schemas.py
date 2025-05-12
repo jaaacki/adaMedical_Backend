@@ -13,7 +13,8 @@ class BaseUserSchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1, max=128))
     email = fields.Email(required=True, validate=validate.Length(max=128))
     google_sso_id = fields.Str(dump_only=True, allow_none=True)
-    role_id = fields.Int(load_only=True, allow_none=True, description="ID of the role to assign to the user.")
+    # Remove the 'description' parameter which is causing the error
+    role_id = fields.Int(load_only=True, allow_none=True) 
     role = fields.Nested(RoleSchema, dump_only=True) # For output, show role details
     is_active = fields.Bool(dump_default=True)
     currency_context = fields.Str(validate=validate.OneOf(["SGD", "IDR"]), dump_default="SGD")

@@ -1,8 +1,8 @@
-from flask import current_app, redirect, url_for, request # Removed session as it's implicitly handled by Authlib state, jsonify not needed
-from flask_restx import Namespace, Resource # Removed fields as token_model_output is imported
+from flask import current_app, redirect, url_for, request 
+from flask_restx import Namespace, Resource 
 from flask_jwt_extended import create_access_token, create_refresh_token
 
-from app.extensions import db, oauth # Import initialized extensions
+from app.extensions import db, oauth 
 from app.users.models import User, Role
 # For serializing user info, token_model_output for Swagger
 from app.users.routes import token_model_output 
@@ -39,7 +39,7 @@ class GoogleLogin(Resource):
         """Redirect to Google to authorize the application."""
         if not current_app.config.get('GOOGLE_CLIENT_ID') or \
            not current_app.config.get('GOOGLE_CLIENT_SECRET') or \
-           not current_app.config.get('GOOGLE_REDIRECT_URI'): # Check redirect URI also
+           not current_app.config.get('GOOGLE_REDIRECT_URI'): 
             current_app.logger.error("Google SSO not configured completely on the server (ID, Secret, or Redirect URI missing).")
             return {"message": "Google SSO not configured correctly on the server."}, 500
         
@@ -55,8 +55,9 @@ class GoogleLogin(Resource):
 
 @ns.route('/google/callback')
 class GoogleCallback(Resource):
-    @ns.doc(description='Handles the callback from Google after authentication. Issues JWT tokens on success.',
-              params=google_callback_params.args) # Corrected to pass args
+    # Fixed: Use expect_parser instead of directly passing params to doc
+    @ns.doc(description='Handles the callback from Google after authentication. Issues JWT tokens on success.')
+    @ns.expect(google_callback_params)
     @ns.marshal_with(token_model_output) 
     @ns.response(401, 'Authentication failed')
     @ns.response(500, 'SSO Configuration error or internal error')

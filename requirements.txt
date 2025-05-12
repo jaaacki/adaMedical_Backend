@@ -1,14 +1,15 @@
 Flask
 Flask-SQLAlchemy
 Flask-Migrate
-Flask-RESTx
+Flask-RESTx==0.5.1
 Flask-JWT-Extended
 Flask-CORS
 Marshmallow
 Flask-Marshmallow
 bcrypt
 google-cloud-secret-manager
-mysqlclient
+# mysqlclient  # Commenting out as we're replacing with PyMySQL
+pymysql>=1.0.2  # Adding PyMySQL as the MySQL driver
 gunicorn
 python-dotenv
 alembic
