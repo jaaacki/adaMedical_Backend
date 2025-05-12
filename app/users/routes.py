@@ -77,7 +77,8 @@ role_input_model = ns.model('RoleInput', {
 })
 
 # --- Marshmallow Schema Instances --- 
-# (using specific schemas for clarity rather than one generic UserSchema with many variations)\user_registration_schema = UserRegistrationSchema()
+# (using specific schemas for clarity rather than one generic UserSchema with many variations)
+user_registration_schema = UserRegistrationSchema()
 user_profile_update_schema = UserProfileUpdateSchema()
 user_update_admin_schema = UserUpdateAdminSchema(partial=True) # Admin updates are partial
 user_login_schema = UserLoginSchema()
@@ -204,8 +205,12 @@ class UserLogin(Resource):
         if user and user.password_hash and user.check_password(data['password']): # Check if password_hash exists
             if not user.is_active:
                 return {'message': 'User account is inactive.'}, 403
-            access_token = create_access_token(identity=user.id)
-            refresh_token = create_refresh_token(identity=user.id)
+            
+            # Ensure user_id is converted to string for JWT compatibility
+            user_id_str = str(user.id)
+            access_token = create_access_token(identity=user_id_str)
+            refresh_token = create_refresh_token(identity=user_id_str)
+            
             return {'access_token': access_token, 'refresh_token': refresh_token}, 200
         return {'message': 'Invalid credentials or user not found.'}, 401
 
@@ -216,6 +221,10 @@ class TokenRefresh(Resource):
     def post(self):
         """Refresh access token using a valid refresh token"""
         current_user_id = get_jwt_identity()
+        # Ensure user_id is a string
+        if not isinstance(current_user_id, str):
+            current_user_id = str(current_user_id)
+            
         new_access_token = create_access_token(identity=current_user_id)
         return {'access_token': new_access_token}, 200
 
@@ -241,6 +250,14 @@ class UserResource(Resource): # Renamed for clarity from UserDetail
     def get(self, user_id):
         """Get a specific user's details. Admins can get any; users can get their own."""
         requesting_user_id = get_jwt_identity()
+        
+        # Convert requesting_user_id to int if it's a string
+        if isinstance(requesting_user_id, str):
+            try:
+                requesting_user_id = int(requesting_user_id)
+            except ValueError:
+                ns.abort(401, message="Invalid user identity")
+                
         requesting_user = User.query.get(requesting_user_id)
         
         if not (requesting_user.role and requesting_user.role.name == 'Admin') and requesting_user_id != user_id:
@@ -306,6 +323,14 @@ class UserResource(Resource): # Renamed for clarity from UserDetail
     def delete(self, user_id):
         """Delete a user (Admin action)."""
         requesting_user_id = get_jwt_identity()
+        
+        # Convert requesting_user_id to int if it's a string
+        if isinstance(requesting_user_id, str):
+            try:
+                requesting_user_id = int(requesting_user_id)
+            except ValueError:
+                ns.abort(401, message="Invalid user identity")
+                
         if user_id == requesting_user_id:
             return {"message": "Admins cannot delete their own active account via this endpoint."}, 403
             

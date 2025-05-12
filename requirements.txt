@@ -1,16 +1,18 @@
-Flask
-Flask-SQLAlchemy
-Flask-Migrate
+Flask==2.0.1
+Werkzeug==2.0.1
+SQLAlchemy==1.4.46
+Flask-SQLAlchemy==2.5.1
+Flask-Migrate==3.1.0
 Flask-RESTx==0.5.1
-Flask-JWT-Extended
-Flask-CORS
-Marshmallow
-Flask-Marshmallow
-bcrypt
-google-cloud-secret-manager
-# mysqlclient  # Commenting out as we're replacing with PyMySQL
-pymysql>=1.0.2  # Adding PyMySQL as the MySQL driver
-gunicorn
-python-dotenv
-alembic
-Authlib
+Flask-JWT-Extended==4.4.4
+Flask-CORS==3.0.10
+Marshmallow==3.14.1
+Flask-Marshmallow==0.14.0
+marshmallow-sqlalchemy==0.28.1
+bcrypt==4.0.1
+google-cloud-secret-manager==2.12.4
+pymysql==1.0.2
+gunicorn==20.1.0
+python-dotenv==0.20.0
+alembic==1.8.1
+Authlib==1.1.0

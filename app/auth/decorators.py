@@ -13,6 +13,14 @@ def role_required(roles):
         def wrapper(*args, **kwargs):
             verify_jwt_in_request()
             user_id = get_jwt_identity()
+            
+            # Convert user_id to int if it's a string
+            if isinstance(user_id, str):
+                try:
+                    user_id = int(user_id)
+                except ValueError:
+                    return {"message": "Invalid user identity"}, 401
+                    
             current_user = User.query.get(user_id)
             if not current_user or not current_user.role or current_user.role.name not in roles:
                 return {"message": "Insufficient permissions"}, 403

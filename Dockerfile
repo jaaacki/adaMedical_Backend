@@ -4,21 +4,20 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install only MySQL client for command line operations, not for Python connectivity
+# Install MySQL client for command line operations
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-mysql-client \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Verify PyMySQL installation
-RUN pip show pymysql
-
 # Copy application code
 COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--log-level", "debug", "main:create_app"]
+# Simple command using Flask development server
+CMD ["flask", "run", "--host=0.0.0.0", "--port=8000"]

@@ -24,6 +24,14 @@ def create_app(config_name=None):
     if not app.config.get('SECRET_KEY'):
         app.logger.critical("FATAL: SECRET_KEY is not set. Application will not run securely or properly.")
 
+    # Specific JWT configuration
+    if not app.config.get('JWT_SECRET_KEY'):
+        app.logger.warning("JWT_SECRET_KEY not set. Using SECRET_KEY for JWT instead.")
+        app.config['JWT_SECRET_KEY'] = app.config.get('SECRET_KEY')
+        
+    # Force JWT identity to be handled as string
+    app.config['JWT_IDENTITY_CLAIM'] = 'sub'
+
     # Enable more detailed error messages in development
     if app.config.get('ENV') == 'development':
         app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -34,6 +42,28 @@ def create_app(config_name=None):
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}}) # Adjust origins for production
     oauth.init_app(app) # Initialize Authlib's OAuth with the app
+
+    # Set up JWT error handlers
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return jsonify({
+            'msg': 'The token has expired',
+            'error': 'token_expired'
+        }), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        return jsonify({
+            'msg': 'Signature verification failed',
+            'error': 'invalid_token'
+        }), 401
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        return jsonify({
+            'msg': 'Request does not contain an access token',
+            'error': 'authorization_required'
+        }), 401
 
     # Initialize Flask-RESTx Api
     api = Api(
@@ -68,7 +98,7 @@ def create_app(config_name=None):
     
     # More accurate check for Google SSO configuration
     google_client_id = app.config.get('GOOGLE_CLIENT_ID')
-    if google_client_id and len(google_client_id) > 10:  # Simple check for a valid-looking ID
+    if google_client_id and len(str(google_client_id)) > 10:  # Simple check for a valid-looking ID
         app.logger.info("Google SSO Client ID is configured.")
     else:
         app.logger.warning("Google SSO Client ID is NOT configured or invalid. Google SSO will not work.")
