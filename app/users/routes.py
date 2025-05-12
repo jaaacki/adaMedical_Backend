@@ -94,10 +94,23 @@ def _populate_computed_fields(user_obj, user_data_dict):
     user_data_dict['is_sso_user'] = bool(user_obj.google_sso_id)
     return user_data_dict
 
+# Updated User Routes with Proper Status Responses
+# Replace or modify the routes in app/users/routes.py
+
+# First, let's define some common response models for success and errors
+success_response = ns.model('SuccessResponse', {
+    'status': fields.String(description='Operation status', example='success'),
+    'message': fields.String(description='Success message', example='Operation completed successfully')
+})
+
+# Common response decorators and error models for each endpoint
 @ns.route('/me')
 class UserSelf(Resource):
     @jwt_required()
     @ns.marshal_with(user_model_output)
+    @ns.response(200, 'Success')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(404, 'User not found')
     def get(self):
         """Get your own user profile"""
         user_id = get_jwt_identity()
@@ -106,8 +119,13 @@ class UserSelf(Resource):
         return _populate_computed_fields(user, dumped_data)
 
     @jwt_required()
-    @ns.expect(user_profile_update_input_model) # Corrected model name
+    @ns.expect(user_profile_update_input_model)
     @ns.marshal_with(user_model_output)
+    @ns.response(200, 'Profile updated successfully')
+    @ns.response(400, 'Validation error')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - SSO users cannot change password')
+    @ns.response(404, 'User not found')
     def put(self):
         """Update your own user profile. Password change is restricted for SSO users."""
         user_id = get_jwt_identity()
@@ -116,7 +134,7 @@ class UserSelf(Resource):
 
         val_errors = user_profile_update_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            return {'status': 'error', 'errors': val_errors}, 400
 
         user.name = data.get('name', user.name)
         user.currency_context = data.get('currency_context', user.currency_context)
@@ -126,32 +144,41 @@ class UserSelf(Resource):
 
         if new_password:
             if user.google_sso_id:
-                # Strictly enforce: SSO users cannot set/change password via this endpoint as per spec.
-                # "API for users to manage their own profile (e.g., change password if not SSO...)"
-                return {'message': 'Password management is not available for accounts linked with Google SSO.'}, 403
+                # SSO users cannot set/change password
+                ns.abort(403, status='error', message='Password management is not available for accounts linked with Google SSO.')
             
             if not user.password_hash and not current_password:
                 # User has no password set, allow setting new_password directly
                 pass 
             elif not user.check_password(current_password):
-                return {'message': 'Incorrect current password.'}, 400
+                ns.abort(400, status='error', message='Incorrect current password.')
             
-            user.set_password(new_password) # Validation for new_password is in the schema
+            user.set_password(new_password)
 
         try:
             db.session.commit()
-        except Exception as e: # Catch potential db errors
+        except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating user profile for {user.email}: {e}", exc_info=True)
-            return {"message": "Could not update profile due to a server error."}, 500
+            ns.abort(500, status='error', message='Could not update profile due to a server error.')
         
         dumped_data = base_user_schema.dump(user)
-        return _populate_computed_fields(user, dumped_data)
+        result = _populate_computed_fields(user, dumped_data)
+        result['status'] = 'success'
+        result['message'] = 'Profile updated successfully'
+        return result
 
-@ns.route('/register') # For Admins
+@ns.route('/register')
 class UserRegister(Resource):
     @ns.expect(user_registration_input_model)
     @ns.marshal_with(user_model_output, code=201)
+    @ns.response(201, 'User created successfully')
+    @ns.response(400, 'Validation Error')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Admin access required')
+    @ns.response(404, 'Role not found')
+    @ns.response(409, 'User already exists')
+    @ns.response(500, 'Server error')
     @jwt_required()
     @admin_required
     def post(self):
@@ -159,10 +186,10 @@ class UserRegister(Resource):
         data = request.json
         val_errors = user_registration_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            ns.abort(400, status='error', errors=val_errors)
 
         if User.query.filter_by(email=data['email']).first():
-            return {'message': 'User already exists with this email'}, 409
+            ns.abort(409, status='error', message='User already exists with this email')
         
         new_user = User(
             name=data['name'],
@@ -170,14 +197,14 @@ class UserRegister(Resource):
             is_active=data.get('is_active', True),
             currency_context=data.get('currency_context', current_app.config.get('DEFAULT_CURRENCY', 'SGD'))
         )
-        new_user.set_password(data['password']) # Password is required by schema
+        new_user.set_password(data['password'])
 
         if 'role_id' in data and data['role_id']:
             role = Role.query.get(data['role_id'])
             if role:
                 new_user.role = role
             else:
-                return {'message': f"Role with ID {data['role_id']} not found. Cannot assign role." }, 404
+                ns.abort(404, status='error', message=f"Role with ID {data['role_id']} not found")
         
         try:
             db.session.add(new_user)
@@ -185,39 +212,51 @@ class UserRegister(Resource):
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error registering new user {data['email']}: {e}", exc_info=True)
-            return {"message": "Could not register user due to a server error."}, 500
+            ns.abort(500, status='error', message='Could not register user due to a server error')
 
         dumped_data = base_user_schema.dump(new_user)
-        return _populate_computed_fields(new_user, dumped_data), 201
+        result = _populate_computed_fields(new_user, dumped_data)
+        result['status'] = 'success'
+        result['message'] = 'User created successfully'
+        return result, 201
 
 @ns.route('/login')
 class UserLogin(Resource):
     @ns.expect(login_model_input)
-    @ns.marshal_with(token_model_output)
+    @ns.response(200, 'Login successful')
+    @ns.response(400, 'Validation error')
+    @ns.response(401, 'Invalid credentials')
+    @ns.response(403, 'Account inactive')
     def post(self):
         """Authenticate user with email/password and return tokens"""
         data = request.json
         val_errors = user_login_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            return {'status': 'error', 'errors': val_errors}, 400
 
         user = User.query.filter_by(email=data['email']).first()
-        if user and user.password_hash and user.check_password(data['password']): # Check if password_hash exists
+        if user and user.password_hash and user.check_password(data['password']):
             if not user.is_active:
-                return {'message': 'User account is inactive.'}, 403
+                return {'status': 'error', 'message': 'User account is inactive'}, 403
             
-            # Ensure user_id is converted to string for JWT compatibility
             user_id_str = str(user.id)
             access_token = create_access_token(identity=user_id_str)
             refresh_token = create_refresh_token(identity=user_id_str)
             
-            return {'access_token': access_token, 'refresh_token': refresh_token}, 200
-        return {'message': 'Invalid credentials or user not found.'}, 401
+            return {
+                'status': 'success',
+                'message': 'Login successful',
+                'access_token': access_token, 
+                'refresh_token': refresh_token
+            }, 200
+            
+        return {'status': 'error', 'message': 'Invalid credentials'}, 401
 
 @ns.route('/refresh')
 class TokenRefresh(Resource):
     @jwt_required(refresh=True)
-    @ns.marshal_with(ns.model('AccessTokenOnly', {'access_token': fields.String})) # Specific model for refresh response
+    @ns.response(200, 'Token refreshed successfully')
+    @ns.response(401, 'Invalid or expired refresh token')
     def post(self):
         """Refresh access token using a valid refresh token"""
         current_user_id = get_jwt_identity()
@@ -226,11 +265,18 @@ class TokenRefresh(Resource):
             current_user_id = str(current_user_id)
             
         new_access_token = create_access_token(identity=current_user_id)
-        return {'access_token': new_access_token}, 200
+        return {
+            'status': 'success',
+            'message': 'Token refreshed successfully',
+            'access_token': new_access_token
+        }, 200
 
 @ns.route('/')
 class UserList(Resource):
     @ns.marshal_list_with(user_model_output)
+    @ns.response(200, 'Success')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Admin access required')
     @jwt_required()
     @admin_required
     def get(self):
@@ -239,12 +285,17 @@ class UserList(Resource):
         dumped_data_list = []
         for user in users:
             dumped_data = base_user_schema.dump(user)
-            dumped_data_list.append(_populate_computed_fields(user, dumped_data))
-        return dumped_data_list, 200
+            user_data = _populate_computed_fields(user, dumped_data)
+            dumped_data_list.append(user_data)
+        
+        return dumped_data_list
 
 @ns.route('/<int:user_id>')
+@ns.response(200, 'Success')
+@ns.response(401, 'Unauthorized')
+@ns.response(403, 'Forbidden - Admin access required or not your own profile')
 @ns.response(404, 'User not found')
-class UserResource(Resource): # Renamed for clarity from UserDetail
+class UserResource(Resource):
     @ns.marshal_with(user_model_output)
     @jwt_required()
     def get(self, user_id):
@@ -256,34 +307,42 @@ class UserResource(Resource): # Renamed for clarity from UserDetail
             try:
                 requesting_user_id = int(requesting_user_id)
             except ValueError:
-                ns.abort(401, message="Invalid user identity")
+                ns.abort(401, status='error', message='Invalid user identity')
                 
         requesting_user = User.query.get(requesting_user_id)
         
         if not (requesting_user.role and requesting_user.role.name == 'Admin') and requesting_user_id != user_id:
-            ns.abort(403, message="Forbidden: You can only view your own profile or you lack admin privileges.")
+            ns.abort(403, status='error', message='You can only view your own profile or you need admin privileges')
         
         user = User.query.get_or_404(user_id)
         dumped_data = base_user_schema.dump(user)
-        return _populate_computed_fields(user, dumped_data)
+        result = _populate_computed_fields(user, dumped_data)
+        result['status'] = 'success'
+        return result
 
-    @ns.expect(user_update_admin_input_model) # Corrected model name
+    @ns.expect(user_update_admin_input_model)
     @ns.marshal_with(user_model_output)
+    @ns.response(200, 'User updated successfully')
+    @ns.response(400, 'Validation error')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Admin access required')
+    @ns.response(404, 'User or role not found')
+    @ns.response(409, 'Email already in use')
     @jwt_required()
     @admin_required
     def put(self, user_id):
         """Update a user's details (Admin action)."""
         user = User.query.get_or_404(user_id)
         data = request.json
-        val_errors = user_update_admin_schema.validate(data) # Uses partial=True from schema definition
+        val_errors = user_update_admin_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            ns.abort(400, status='error', errors=val_errors)
 
         user.name = data.get('name', user.name)
         new_email = data.get('email')
         if new_email and new_email != user.email:
             if User.query.filter(User.email == new_email, User.id != user_id).first():
-                return {'message': 'Email already in use by another account'}, 409
+                ns.abort(409, status='error', message='Email already in use by another account')
             user.email = new_email
         
         if 'is_active' in data:
@@ -294,70 +353,80 @@ class UserResource(Resource): # Renamed for clarity from UserDetail
             if data['role_id'] is not None:
                 role = Role.query.get(data['role_id'])
                 if not role:
-                    return {'message': f"Role with ID {data['role_id']} not found"}, 404
-                user.role_id = role.id # Explicitly set role_id
+                    ns.abort(404, status='error', message=f"Role with ID {data['role_id']} not found")
+                user.role_id = role.id
             else:
-                user.role_id = None # Allow unassigning role
+                user.role_id = None
 
         if 'password' in data and data['password']:
-            user.set_password(data['password']) # New password validation is in schema
-        elif 'password' in data and not data['password']:
-             # If admin explicitly sends empty string for password, consider clearing it
-             # This might be desired to force SSO or reset. For now, we only set if non-empty.
-             pass 
+            user.set_password(data['password'])
 
         try:
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error updating user {user.email} (admin): {e}", exc_info=True)
-            return {"message": "Could not update user due to a server error."}, 500
+            current_app.logger.error(f"Error updating user {user.email}: {e}", exc_info=True)
+            ns.abort(500, status='error', message='Could not update user due to a server error')
         
         dumped_data = base_user_schema.dump(user)
-        return _populate_computed_fields(user, dumped_data)
+        result = _populate_computed_fields(user, dumped_data)
+        result['status'] = 'success'
+        result['message'] = 'User updated successfully'
+        return result
 
     @jwt_required()
     @admin_required
-    @ns.response(204, 'User deleted successfully')
-    @ns.response(403, 'Deletion forbidden (e.g., deleting self, deleting system-critical user)')
+    @ns.response(200, 'User deleted successfully')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Cannot delete your own account')
+    @ns.response(404, 'User not found')
+    @ns.response(500, 'Server error')
     def delete(self, user_id):
         """Delete a user (Admin action)."""
         requesting_user_id = get_jwt_identity()
         
-        # Convert requesting_user_id to int if it's a string
         if isinstance(requesting_user_id, str):
             try:
                 requesting_user_id = int(requesting_user_id)
             except ValueError:
-                ns.abort(401, message="Invalid user identity")
+                ns.abort(401, status='error', message='Invalid user identity')
                 
         if user_id == requesting_user_id:
-            return {"message": "Admins cannot delete their own active account via this endpoint."}, 403
+            ns.abort(403, status='error', message='Admins cannot delete their own active account')
             
         user = User.query.get_or_404(user_id)
-        # Add any other critical user deletion prevention logic here (e.g., if user is last admin)
+        
         try:
             db.session.delete(user)
             db.session.commit()
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error deleting user {user.email}: {e}", exc_info=True)
-            return {"message": "Could not delete user due to a server error."}, 500
-        return '', 204
+            ns.abort(500, status='error', message='Could not delete user due to a server error')
+            
+        return {'status': 'success', 'message': 'User deleted successfully'}, 200
 
 # --- Roles Management ---
 @ns.route('/roles')
 class RoleList(Resource):
     @ns.marshal_list_with(role_output_model)
+    @ns.response(200, 'Success')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Admin access required')
     @jwt_required()
     @admin_required
     def get(self):
         """List all roles (Admin action)."""
         roles = Role.query.all()
-        return roles_schema.dump(roles), 200 # roles_schema is RoleSchema(many=True)
+        return roles_schema.dump(roles)
 
     @ns.expect(role_input_model)
     @ns.marshal_with(role_output_model, code=201)
+    @ns.response(201, 'Role created successfully')
+    @ns.response(400, 'Validation error')
+    @ns.response(401, 'Unauthorized')
+    @ns.response(403, 'Forbidden - Admin access required')
+    @ns.response(409, 'Role already exists')
     @jwt_required()
     @admin_required
     def post(self):
@@ -365,10 +434,10 @@ class RoleList(Resource):
         data = request.json
         val_errors = role_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            ns.abort(400, status='error', errors=val_errors)
         
         if Role.query.filter_by(name=data['name']).first():
-            return {'message': 'Role with this name already exists'}, 409
+            ns.abort(409, status='error', message='Role with this name already exists')
         
         new_role = Role(name=data['name'])
         try:
@@ -377,22 +446,34 @@ class RoleList(Resource):
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating role {data['name']}: {e}", exc_info=True)
-            return {"message": "Could not create role due to a server error."}, 500
-        return role_schema.dump(new_role), 201
+            ns.abort(500, status='error', message='Could not create role due to a server error')
+            
+        result = role_schema.dump(new_role)
+        result['status'] = 'success'
+        result['message'] = 'Role created successfully'
+        return result, 201
 
 @ns.route('/roles/<int:role_id>')
+@ns.response(401, 'Unauthorized')
+@ns.response(403, 'Forbidden - Admin access required')
 @ns.response(404, 'Role not found')
-class RoleResource(Resource): # Renamed for clarity
+class RoleResource(Resource):
     @ns.marshal_with(role_output_model)
+    @ns.response(200, 'Success')
     @jwt_required()
     @admin_required
     def get(self, role_id):
         """Get role details (Admin action)."""
         role = Role.query.get_or_404(role_id)
-        return role_schema.dump(role), 200
+        result = role_schema.dump(role)
+        result['status'] = 'success'
+        return result
     
     @ns.expect(role_input_model) 
     @ns.marshal_with(role_output_model)
+    @ns.response(200, 'Role updated successfully')
+    @ns.response(400, 'Validation error')
+    @ns.response(409, 'Role name already exists')
     @jwt_required()
     @admin_required
     def put(self, role_id):
@@ -401,11 +482,11 @@ class RoleResource(Resource): # Renamed for clarity
         data = request.json
         val_errors = role_schema.validate(data)
         if val_errors:
-            return val_errors, 400
+            ns.abort(400, status='error', errors=val_errors)
 
         new_name = data.get('name')
         if new_name and new_name != role.name and Role.query.filter(Role.name == new_name, Role.id != role_id).first():
-            return {'message': 'Role name already in use'}, 409
+            ns.abort(409, status='error', message='Role name already in use')
         
         role.name = new_name if new_name else role.name
         try:
@@ -413,24 +494,29 @@ class RoleResource(Resource): # Renamed for clarity
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating role {role.name}: {e}", exc_info=True)
-            return {"message": "Could not update role due to a server error."}, 500
-        return role_schema.dump(role), 200
+            ns.abort(500, status='error', message='Could not update role due to a server error')
+            
+        result = role_schema.dump(role)
+        result['status'] = 'success'
+        result['message'] = 'Role updated successfully'
+        return result
 
     @jwt_required()
     @admin_required
-    @ns.response(204, 'Role deleted successfully')
-    @ns.response(400, 'Cannot delete role (e.g., role in use)')
-    @ns.response(403, 'Cannot delete critical role (e.g., Admin)')
+    @ns.response(200, 'Role deleted successfully')
+    @ns.response(400, 'Cannot delete role that is in use')
+    @ns.response(403, 'Cannot delete critical role')
     def delete(self, role_id):
         """Delete a role (Admin action)."""
         role = Role.query.get_or_404(role_id)
         if role.name.lower() == 'admin': 
-            return {"message": "Cannot delete the core 'Admin' role."}, 403
+            ns.abort(403, status='error', message="Cannot delete the core 'Admin' role")
+            
         if role.name.lower() == current_app.config.get('DEFAULT_USER_ROLE', 'User').lower():
-             return {"message": f"Cannot delete the default system role '{role.name}'."}, 403
+            ns.abort(403, status='error', message=f"Cannot delete the default system role '{role.name}'")
 
-        if role.users.first(): # Check if any user has this role
-             return {'message': f"Cannot delete role '{role.name}', it is currently assigned to users. Please reassign users first." }, 400
+        if role.users.first():
+            ns.abort(400, status='error', message=f"Cannot delete role '{role.name}', it is currently assigned to users")
 
         try:
             db.session.delete(role)
@@ -438,5 +524,6 @@ class RoleResource(Resource): # Renamed for clarity
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error deleting role {role.name}: {e}", exc_info=True)
-            return {"message": "Could not delete role due to a server error."}, 500
-        return '', 204
+            ns.abort(500, status='error', message='Could not delete role due to a server error')
+            
+        return {'status': 'success', 'message': 'Role deleted successfully'}, 200

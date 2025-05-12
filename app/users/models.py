@@ -15,9 +15,11 @@ def verify_password(stored_hash, password):
     if not stored_hash:
         return False
     
+    # Ensure password is bytes
     if isinstance(password, str):
         password = password.encode('utf-8')
     
+    # Ensure stored_hash is bytes 
     if isinstance(stored_hash, str):
         stored_hash = stored_hash.encode('utf-8')
     
