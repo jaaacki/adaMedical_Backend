@@ -44,7 +44,7 @@ success_model = ns.model('SuccessResponse', {
     'message': fields.String(description='Success message')
 })
 
-# Currency Models (to be moved to models.py in a real implementation)
+# Currency Models
 class Currency(db.Model):
     """Model for available currencies in the system."""
     __tablename__ = 'currencies'
@@ -457,37 +457,46 @@ class AdminUserCurrencyDetail(Resource):
         
         return {'status': 'success', 'message': f'Currency {currency_code} removed from user {user_id}'}
 
-# Initialize with default currencies
 def initialize_currencies():
     """Initialize the currencies table with default values."""
-    # Default currencies to create if they don't exist
-    default_currencies = [
-        {'code': 'SGD', 'name': 'Singapore Dollar', 'symbol': 'S$'},
-        {'code': 'IDR', 'name': 'Indonesian Rupiah', 'symbol': 'Rp'},
-        {'code': 'USD', 'name': 'US Dollar', 'symbol': '$'},
-        {'code': 'EUR', 'name': 'Euro', 'symbol': '€'},
-        {'code': 'GBP', 'name': 'British Pound', 'symbol': '£'},
-        {'code': 'JPY', 'name': 'Japanese Yen', 'symbol': '¥'},
-        {'code': 'AUD', 'name': 'Australian Dollar', 'symbol': 'A$'},
-        {'code': 'CNY', 'name': 'Chinese Yuan', 'symbol': '¥'},
-    ]
-    
-    # Create each currency if it doesn't exist
-    for curr_data in default_currencies:
-        existing = Currency.query.get(curr_data['code'])
-        if not existing:
-            currency = Currency(
-                code=curr_data['code'],
-                name=curr_data['name'],
-                symbol=curr_data['symbol'],
-                is_active=True
-            )
-            db.session.add(currency)
-    
-    # Commit all changes
     try:
-        db.session.commit()
-        current_app.logger.info("Default currencies initialized.")
+        # Check if the currencies table exists
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        if 'currencies' not in inspector.get_table_names():
+            current_app.logger.info("Currencies table doesn't exist yet. Skipping initialization.")
+            return
+            
+        # Default currencies to create if they don't exist
+        default_currencies = [
+            {'code': 'SGD', 'name': 'Singapore Dollar', 'symbol': 'S$'},
+            {'code': 'IDR', 'name': 'Indonesian Rupiah', 'symbol': 'Rp'},
+            {'code': 'USD', 'name': 'US Dollar', 'symbol': '$'},
+            {'code': 'EUR', 'name': 'Euro', 'symbol': '€'},
+            {'code': 'GBP', 'name': 'British Pound', 'symbol': '£'},
+            {'code': 'JPY', 'name': 'Japanese Yen', 'symbol': '¥'},
+            {'code': 'AUD', 'name': 'Australian Dollar', 'symbol': 'A$'},
+            {'code': 'CNY', 'name': 'Chinese Yuan', 'symbol': '¥'},
+        ]
+        
+        # Create each currency if it doesn't exist
+        for curr_data in default_currencies:
+            existing = Currency.query.filter_by(code=curr_data['code']).first()
+            if not existing:
+                currency = Currency(
+                    code=curr_data['code'],
+                    name=curr_data['name'],
+                    symbol=curr_data['symbol'],
+                    is_active=True
+                )
+                db.session.add(currency)
+        
+        # Commit all changes
+        try:
+            db.session.commit()
+            current_app.logger.info("Default currencies initialized.")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error initializing currencies: {e}")
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error initializing currencies: {e}")
+        current_app.logger.error(f"Error in initialize_currencies: {e}")

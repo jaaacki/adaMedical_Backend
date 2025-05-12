@@ -530,6 +530,8 @@ class RoleResource(Resource):
     
 # app/users/routes.py - Add this handler to the users namespace
 
+# Add this code to your app/users/routes.py file
+
 @ns.route('/<int:user_id>/currencies')
 class UserCurrencyHandler(Resource):
     @ns.doc('manage_user_currencies')
@@ -564,14 +566,14 @@ class UserCurrencyHandler(Resource):
         if default_currency not in currencies:
             return {'status': 'error', 'message': 'Default currency must be in the currencies list'}, 400
         
-        # Verify all currencies exist
-        from app.currencies.routes import Currency
-        for code in currencies:
-            currency = Currency.query.get(code)
-            if not currency:
-                return {'status': 'error', 'message': f'Currency {code} not found'}, 404
-        
         try:
+            # Verify all currencies exist
+            from app.currencies.routes import Currency
+            for code in currencies:
+                currency = Currency.query.filter_by(code=code).first()
+                if not currency:
+                    return {'status': 'error', 'message': f'Currency {code} not found'}, 404
+            
             # Start by getting existing user currencies
             from app.currencies.routes import UserCurrency
             existing_currencies = UserCurrency.query.filter_by(user_id=user_id).all()

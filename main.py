@@ -112,8 +112,11 @@ def create_app(config_name=None):
         from app.currencies.routes import ns as currencies_ns, initialize_currencies
         api.add_namespace(currencies_ns, path='/currencies')
 
-        # Initialize currencies
-        initialize_currencies()
+        # Initialize currencies after all namespaces are registered (around line 82-85)
+        try:
+            initialize_currencies()
+        except Exception as e:
+            app.logger.error(f"Error initializing currencies: {e}")
         
         # Create default admin user if no users exist
         create_default_admin(app)
