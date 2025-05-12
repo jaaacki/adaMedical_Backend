@@ -207,10 +207,6 @@ class CurrencyDetail(Resource):
         
         return {'status': 'success', 'message': f'Currency {code} deleted'}
 
-@ns.route('/user/currencies')
-class UserCurrencyList(Resource):
-    # Original methods...
-
 # Right after it, add this class:
 @ns.route('/user/currencies', endpoint='user_currencies_no_slash')
 class UserCurrencyListNoSlash(Resource):
