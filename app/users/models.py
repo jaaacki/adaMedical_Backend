@@ -1,4 +1,4 @@
-from app import db # Assuming db is initialized in the main app.py or via a shared extension module
+from app.extensions import db  # Import from extensions, not app
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 
