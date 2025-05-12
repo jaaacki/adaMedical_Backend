@@ -63,3 +63,37 @@ class User(db.Model):
 
     def __repr__(self):
         return f'<User {self.email}>'
+    
+# Add this to the User class:
+currencies = db.relationship('UserCurrency', back_populates='user', cascade='all, delete-orphan')
+
+# Add this method to the User class:
+def get_current_currency(self):
+    """Get the user's current working currency code."""
+    default_currency = UserCurrency.query.filter_by(
+        user_id=self.id, 
+        is_default=True
+    ).first()
+    
+    if default_currency:
+        return default_currency.currency_code
+    
+    # Fallback to the old currency_context field for backward compatibility
+    if self.currency_context:
+        return self.currency_context
+    
+    # Final fallback to system default
+    from flask import current_app
+    return current_app.config.get('DEFAULT_CURRENCY', 'SGD')
+
+def get_assigned_currencies(self):
+    """Get list of currency codes assigned to this user."""
+    user_currencies = UserCurrency.query.filter_by(user_id=self.id).all()
+    return [uc.currency_code for uc in user_currencies]
+
+def has_currency_access(self, currency_code):
+    """Check if user has access to a specific currency."""
+    return UserCurrency.query.filter_by(
+        user_id=self.id,
+        currency_code=currency_code
+    ).first() is not None
