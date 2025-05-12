@@ -10,5 +10,5 @@ from authlib.integrations.flask_client import OAuth
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
-cors = CORS()
+cors = None
 oauth = OAuth()

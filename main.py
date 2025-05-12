@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from config import get_config, config_by_name
 from app.extensions import db, migrate, jwt, cors, oauth
+from flask_cors import CORS
 from app.core.error_handlers import register_error_handlers
 from app.core.logging import configure_logging
 from app.auth.routes import register_oauth_client
@@ -43,8 +44,23 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}}) # Adjust origins for production
+    cors.init_app(app, 
+        resources={r"/*": {
+            "origins": "*",
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        }}
+    )
     oauth.init_app(app) # Initialize Authlib's OAuth with the app
+
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = app.make_default_options_response()
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+            return response
 
     # Register error handlers
     register_error_handlers(app)
@@ -122,6 +138,16 @@ def create_app(config_name=None):
         create_default_admin(app)
 
     app.logger.info(f"Application created with configuration: {app.config.get('ENV', config_name)}")
+    # Also add this route to handle CORS preflight requests explicitly
+    @app.route('/api/v1/currencies', methods=['OPTIONS'])
+    @app.route('/api/v1/currencies/', methods=['OPTIONS'])
+    def handle_currencies_options():
+        response = app.make_default_options_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
     
     # Check Google SSO configuration
     google_client_id = app.config.get('GOOGLE_CLIENT_ID')

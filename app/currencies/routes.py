@@ -118,6 +118,46 @@ class CurrencyList(Resource):
         
         return new_currency, 201
 
+# Right after it, add this class:
+@ns.route('')  # Without trailing slash
+class CurrencyListNoSlash(Resource):
+    """Duplicate of CurrencyList to handle requests without trailing slash."""
+    
+    @ns.marshal_list_with(currency_model)
+    @ns.response(200, 'Success')
+    @jwt_required()
+    def get(self):
+        """List all available currencies."""
+        return Currency.query.filter_by(is_active=True).all()
+    
+    @ns.expect(currency_model)
+    @ns.marshal_with(currency_model, code=201)
+    @ns.response(201, 'Currency created')
+    @ns.response(400, 'Validation error')
+    @ns.response(409, 'Currency already exists')
+    @jwt_required()
+    @admin_required
+    def post(self):
+        """Create a new currency (Admin only)."""
+        data = request.json
+        
+        # Check if currency already exists
+        if Currency.query.get(data['code']):
+            return {'status': 'error', 'message': f"Currency with code {data['code']} already exists"}, 409
+        
+        # Create currency
+        new_currency = Currency(
+            code=data['code'],
+            name=data['name'],
+            symbol=data['symbol'],
+            is_active=data.get('is_active', True)
+        )
+        
+        db.session.add(new_currency)
+        db.session.commit()
+        
+        return new_currency, 201
+
 @ns.route('/<string:code>')
 @ns.response(404, 'Currency not found')
 class CurrencyDetail(Resource):
@@ -169,6 +209,13 @@ class CurrencyDetail(Resource):
 
 @ns.route('/user/currencies')
 class UserCurrencyList(Resource):
+    # Original methods...
+
+# Right after it, add this class:
+@ns.route('/user/currencies', endpoint='user_currencies_no_slash')
+class UserCurrencyListNoSlash(Resource):
+    """Duplicate route handler to handle requests without trailing slash."""
+    
     @ns.marshal_list_with(user_currency_detail_model)
     @ns.response(200, 'Success')
     @jwt_required()
