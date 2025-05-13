@@ -16,6 +16,7 @@ load_dotenv()
 def create_app(config_name=None):
     """Application factory function."""
     app = Flask(__name__)
+    app.url_map.strict_slashes = False
 
     # Determine configuration to use
     if config_name:
